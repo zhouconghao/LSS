@@ -494,3 +494,9 @@ python scripts/mk_nzfull.py --tracer BGS_ANY
 
 #make v2 dupran for mocks, now saved in h5 format
 srun -N 1 -C cpu -t 04:00:00 -q interactive python $LSSCODE/LSS/scripts/main/mkCat_main_ran.py --basedir /global/cfs/cdirs/desi/survey/catalogs/ --verspec loa-v1 --type LRG --version v2 --survey DA2 --mkdupranmasked y --maxr 18
+
+srun -N 1 -C cpu -t 04:00:00 -q interactive python scripts/get_bitweights_alt.py --prog BRIGHT --amtl_dir $SCRATCH/AltMTL/
+
+srun -N 1 -C cpu -t 04:00:00 -q interactive python scripts/get_bitweights_alt.py --prog DARK --amtl_dir $SCRATCH/AltMTL/
+
+srun -N 1 -C cpu -t 04:00:00 --qos interactive --account desi python scripts/mkCat_subsamp.py --ccut -21.35 --input_tracer BGS_ANY --outdir /global/cfs/cdirs/desi/survey/catalogs/DA2/LSS/loa-v1/LSScats/v2/PIP/ --compmd altmtl --mkfulldat y --clusd y --clusran y --nz y --splitGC y --imsys_clus y --imsys_clus_ran y --nran4imsys 10

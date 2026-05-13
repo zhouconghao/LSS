@@ -19,6 +19,7 @@ import healpy as hp
 #from LSS.Cosmo import distance
 from LSS.imaging import densvar
 
+
 #from LSS.common_tools import find_znotposs
 
 
@@ -32,6 +33,7 @@ logger.setLevel(level=logging.INFO)
 
 
 def combtile_qso(tiles,outf='',restart=False,release='guadalupe'):
+    import LSS.common_tools as common
     s = 0
     n = 0
     nfail = 0
@@ -50,6 +52,7 @@ def combtile_qso(tiles,outf='',restart=False,release='guadalupe'):
 
         s = 1
         tdone = np.unique(specd['TILEID'])
+        common.printlog(str(np.max(tdone)),logger)
         tmask = ~np.isin(tiles['TILEID'],tdone)
     else:
         infl = '/global/cfs/cdirs/desi/survey/catalogs/main/LSS/daily/QSO_catalog_'+release+'.fits'
@@ -61,6 +64,7 @@ def combtile_qso(tiles,outf='',restart=False,release='guadalupe'):
         tmask = ~np.isin(tiles['TILEID'],tdone)
     print('will add QSO info for '+str(len(tiles[tmask]))+' tiles')
     #kl = list(specd.dtype.names)
+    qso_tls = []
     for tile,zdate,tdate in zip(tiles[tmask]['TILEID'],tiles[tmask]['ZDATE'],tiles[tmask]['THRUDATE']):
         tdate = str(tdate)
         tspec = combQSOdata(tile,zdate,tdate,cols=kl)
@@ -83,20 +87,28 @@ def combtile_qso(tiles,outf='',restart=False,release='guadalupe'):
                     new[colname][...] = tspec[colname][...]
 
                 #specd = np.hstack((specd,tspec))
-                specd = np.hstack((specd,new))
+                #specd = np.hstack((specd,new))
+                qso_tls.append(new)
+                print(tile,n,len(tiles[tmask]),len(new))
             #specd.sort('TARGETID')
-            kp = (specd['TARGETID'] > 0)
-            specd = specd[kp]
+            
+            
 
             n += 1
-            print(tile,n,len(tiles[tmask]),len(specd))
+            
         else:
             print(str(tile)+' failed')
             nfail += 1
     print('total number of failures was '+str(nfail))
+    if len(qso_tls) > 0:
+        qso_tls = np.hstack(qso_tls)
+        specd = np.hstack([specd,qso_tls])
+    kp = (specd['TARGETID'] > 0)
+    specd = specd[kp]
     if n > 0:
         #specd.write(outf,format='fits', overwrite=True)
-        fitsio.write(outf,specd,clobber=True)
+        #fitsio.write(outf,specd,clobber=True)
+        common.write_LSS_scratchcp(specd,outf,logger=logger)
         return True
     else:
         return False
@@ -864,7 +876,7 @@ def combQSOdata(tile,zdate,tdate,coaddir='/global/cfs/cdirs/desi/spectro/redux/d
         #    qso_cat = vstack([qso_cat,qso_cati],metadata_conflicts='silent')
 
     qso_cat = vstack(qsocats,metadata_conflicts='silent')
-    qso_cat['TILEID'] = tile
+    qso_cat['TILEID'] = int(tile)
     #print(qso_cat.dtype.names)
     if cols is not None:
         qso_cat = Table(qso_cat)
@@ -1103,15 +1115,22 @@ def get_tiletab(tile_row,tarcol=['RA','DEC','TARGETID','DESI_TARGET','BGS_TARGET
     
     tile = tile_row['TILEID'][0]
     ts = str(tile).zfill(6)
+    #print(ts)
     faf = '/global/cfs/cdirs/desi/target/fiberassign/tiles/trunk/'+ts[:3]+'/fiberassign-'+ts+'.fits.gz'
     fht = fitsio.read_header(faf)
-    mdir = '/global/cfs/cdirs/desi'+fht['MTL'][8:]+'/'
+    mdir = '/dvs_ro/cfs/cdirs/desi'+fht['MTL'][8:]+'/'
     if mdir == '/global/cfs/cdirs/desi/survey/ops/staging/mtl/main/dark/':
         mdir = '/global/cfs/cdirs/desi/target/catalogs/mtl/1.0.0/mtl/main/dark/'
     if mdir == '/global/cfs/cdirs/desi/survey/ops/staging/mtl/main/bright/':
         mdir = '/global/cfs/cdirs/desi/target/catalogs/mtl/1.0.0/mtl/main/bright/'
     #wt = tiles['TILEID'] == tile
+    #print('reading targets for tile '+ts+' from '+mdir)
     tars = read_targets_in_tiles(mdir,tile_row,mtl=True,isodate=fht['MTLTIME'])
+    if 'MTL2' in fht.keys():
+        mdir = '/dvs_ro/cfs/cdirs/desi'+fht['MTL2'][8:]+'/'
+        #print('reading targets for tile '+ts+' from '+mdir)
+        tars2 = read_targets_in_tiles(mdir,tile_row,mtl=True,isodate=fht['MTLTIME'])
+        tars = np.concatenate([tars,tars2])
     #tars.keep_columns(tarcols)
     tars = tars[[b for b in tarcol]]
 
@@ -1831,6 +1850,7 @@ def combtiles(tiles,catdir,tp,tmask,tc='SV3_DESI_TARGET',ttp='ALL',imask=False):
         print('number of zposs with tilelocid not showing up in tilelocid_assigned:')
         print(np.sum(natloc))
     fgu.sort('sort')
+    fgu.remove_column('sort') # remove sort column - pretty sure it is no longer accessed
     #fgu.sort('ZPOSS')
     fu = unique(fgu,keys='TARGETID')#,keep='last')
 
@@ -2360,6 +2380,7 @@ def mkfullran_prog(gtl,indir,rann,imbits,outf,pd,tlid_full=None,badfib=None,ftil
 
     dz.sort('sort') #should allow to later cut on tsnr for match to data
     dz = unique(dz,keys=['TARGETID'],keep='last')
+    dz.remove_column('sort')
     logger.info(str(rann)+' length after cutting to unique TARGETID '+str(len(dz)))
     dz = join(dz,dzpd,keys=['TARGETID'],join_type='left')
     
@@ -2574,6 +2595,7 @@ def mkfullran(gtl,lznp,indir,rann,imbits,outf,tp,pd,notqso='',maxp=3400,min_tsnr
 
     dz.sort('sort') #should allow to later cut on tsnr for match to data
     dz = unique(dz,keys=['TARGETID'],keep='last')
+    dz.remove_column('sort') # remove sort column - pretty sure it is no longer accessed
     logger.info(str(rann)+' length after cutting to unique TARGETID '+str(len(dz)))
     dz = join(dz,dzpd,keys=['TARGETID'],join_type='left')
     tin = np.isin(dz['TARGETID'],dzpd['TARGETID'])
@@ -2693,7 +2715,7 @@ def mkfullran_px(indir,rann,imbits,outf,tp,pd,gtl,lznp,px,dirrt,maxp=3400,min_ts
 
                 dz.sort('sort') #should allow to later cut on tsnr for match to data
                 dz = unique(dz,keys=['TARGETID'],keep='last')
-                dz.remove_columns(['sort'])
+                dz.remove_column('sort')
                 #print('length after cutting to unique TARGETID '+str(len(dz)))
                 #print(np.unique(dz['NTILE']))
                 dz.write(outf,format='fits', overwrite=True)
@@ -3134,11 +3156,15 @@ def mkfulldat(zf,imbits,ftar,tp,bit,outf,ftiles,maxp=3400,azf='',azfm='cumul',em
         pd = 'bright'
         tscol = 'TSNR2_BGS'
         #CHANGE TO HANDLE MOCK PATHS PROPERLY
-        collf = '/global/cfs/cdirs/desi/survey/catalogs/'+survey+'/LSS/collisions-BRIGHT.fits'
+        collf = '/dvs_ro/cfs/cdirs/desi/survey/catalogs/'+survey+'/LSS/collisions-BRIGHT.fits'
+    elif tp[:3] == 'LGE':
+        pd = 'dark1b'
+        tscol = 'TSNR2_ELG'
+        collf = '/dvs_ro/cfs/cdirs/desi/survey/catalogs/'+survey+'/LSS/collisions-DARK1B.fits'
     else:
         pd = 'dark'
         tscol = 'TSNR2_ELG'
-        collf = '/global/cfs/cdirs/desi/survey/catalogs/'+survey+'/LSS/collisions-DARK.fits'
+        collf = '/dvs_ro/cfs/cdirs/desi/survey/catalogs/'+survey+'/LSS/collisions-DARK.fits'
 
     
     if mockz and mask_coll:
@@ -3388,9 +3414,10 @@ def mkfulldat(zf,imbits,ftar,tp,bit,outf,ftiles,maxp=3400,azf='',azfm='cumul',em
 
 
     if tp[:3] == 'ELG' and azf != '' and azfm == 'cumul':# or tp == 'ELG_HIP':
-        arz = Table(fitsio.read(azf,columns=['TARGETID','LOCATION','TILEID','OII_FLUX','OII_FLUX_IVAR']))
-        arz['TILEID'] = arz['TILEID'].astype(int)
-        dz = join(dz,arz,keys=['TARGETID','LOCATION','TILEID'],join_type='left')#,uniq_col_name='{col_name}{table_name}',table_names=['', '_OII'])
+        if azf is not None:
+            arz = Table(fitsio.read(azf,columns=['TARGETID','LOCATION','TILEID','OII_FLUX','OII_FLUX_IVAR']))
+            arz['TILEID'] = arz['TILEID'].astype(int)
+            dz = join(dz,arz,keys=['TARGETID','LOCATION','TILEID'],join_type='left')#,uniq_col_name='{col_name}{table_name}',table_names=['', '_OII'])
         o2c = np.log10(dz['OII_FLUX'] * np.sqrt(dz['OII_FLUX_IVAR']))+0.2*np.log10(dz['DELTACHI2'])
         w = (o2c*0) != 0
         w |= dz['OII_FLUX'] < 0
@@ -3414,7 +3441,7 @@ def mkfulldat(zf,imbits,ftar,tp,bit,outf,ftiles,maxp=3400,azf='',azfm='cumul',em
             emcat['TILEID'] = emcat['TILEID'].astype(int)
             dz = join(dz,emcat,keys=['TARGETID','LOCATION','TILEID'],join_type='left')
 
-    if tp[:3] == 'ELG' and azf != '':
+    if tp[:3] == 'ELG' and azf != '' and azf is not None:
         if logger is not None:
             logger.info('number of masked oII row (hopefully matches number not assigned) '+ str(np.sum(dz['o2c'].mask)))
         else:
@@ -3979,7 +4006,7 @@ def mkclusdat(fl,weighttileloc=True,zmask=False,correct_zcmb='n',tp='',dchi2=9,r
         #    wz &= ff['TSNR2_ELG'] > tsnrcut
         #    common.printlog('length after tsnrcut '+str(len(ff[wz])),logger)
 
-    if tp[:3] == 'LRG':
+    if tp[:3] == 'LRG' or tp[:3] == 'LGE':
         print('applying extra cut for LRGs')
         # Custom DELTACHI2 vs z cut from Rongpu
         wz = ff['ZWARN'] == 0

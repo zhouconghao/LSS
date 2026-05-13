@@ -135,7 +135,7 @@ parser.add_argument("--compmd",help="use altmtl to use PROB_OBS",default='not_al
 parser.add_argument("--addNtileweight2full",help="whether to add the NTILE weight to the full catalogs (necessary for consistent angular upweighting)",default='n')
 parser.add_argument("--NStoGC",help="convert to NGC/SGC catalogs",default='n')
 parser.add_argument("--splitGC",help="convert to NGC/SGC catalogs",default='n')
-parser.add_argument("--resamp",help="resample radial info for different selection function regions",default='n')
+#parser.add_argument("--resamp",help="resample radial info for different selection function regions",default='n') done automatically within mkclusran
 
 
 parser.add_argument("--notqso",help="if y, do not include any qso targets",default='n')
@@ -338,6 +338,8 @@ if mketar: #concatenate target files for given type, with column selection hardc
 maxp = 3400
 if type[:3] == 'LRG' or notqso == 'notqso':
     maxp = 3200
+if type[:3] == 'LGE':
+    maxp = 3210
 if type[:3] == 'BGS':
     maxp = 2100
 
@@ -359,7 +361,7 @@ if mkfulld:
             if specrel == 'newQSOtemp_tagged':
                 azf = '/global/cfs/cdirs/desi/survey/catalogs/DA02/LSS/newQSOtemp_tagged/QSO_catalog.fits'
                 azfm = 'cumul'
-        dz = ldirspec+'datcomb_'+progl+'_tarspecwdup_zdone.fits' #new
+        dz = ldirspec+'datcomb_'+progl+'_tarspecwdup'+f1b+'_zdone.fits' #new
         tlf = ldirspec+'Alltiles_'+progl+'_tilelocs.dat.fits'
 
     else:
@@ -369,7 +371,11 @@ if mkfulld:
             tracer_ts = 'ELG'
         if type[:3] == 'BGS':
             tracer_ts = 'BGS_ANY'
-        dz = ldirspec+'datcomb_'+tracer_ts+'_tarspecwdup_zdone.fits'
+        f1b = ''
+        if type[:3] == 'LGE' and args.survey != 'main':
+            f1b = '_1b'
+
+        dz = ldirspec+'datcomb_'+tracer_ts+'_tarspecwdup'+f1b+'_zdone.fits'
         tlf = None
         if type[:3] == 'ELG':
             azf = emlin_fn
@@ -382,7 +388,7 @@ if mkfulld:
     ftar = fitsio.read(tarf)   
 
     from desitarget import targetmask
-    if type == 'BGS_BRIGHT':
+    if type == 'BGS_BRIGHT' or type == 'BGS_FAINT':
         bit = targetmask.bgs_mask[type]
         desitarg='BGS_TARGET'
     else:
@@ -494,7 +500,7 @@ if args.apply_map_veto == 'y':
     import healpy as hp
     tracer_clushp = tracer_clus
     #BGS_ANY and BGS_BRIGHT should essentially have same footprint
-    if tracer_clus == 'BGS_ANY':
+    if tracer_clus[:3] == 'BGS':
         tracer_clushp = 'BGS_BRIGHT'
     if 'ELG' in tracer_clus:
         tracer_clushp = 'ELG_LOPnotqso'
@@ -1368,7 +1374,7 @@ else:
     #zmin = 0.01
     #zmax = 1.61
 
-if type[:3] == 'LRG':
+if type[:3] == 'LRG' or type[:3] == 'LGE':
     P0 = 10000
 if type[:3] == 'ELG':
     P0 = 4000
@@ -1410,21 +1416,6 @@ if args.splitGC == 'y':
              _spran(rn)
 
 
-if args.resamp == 'y':
-            
-    for reg in regions:
-        flin = dirout + tracer_clus + '_'+reg    
-        def _parfun(rannum):
-            ct.clusran_resamp(flin,rannum,rcols=rcols)#,compmd=args.compmd)#, ntilecut=ntile, ccut=ccut)
-        
-        
-        if args.par == 'y':
-            from multiprocessing import Pool
-            with Pool() as pool:
-                res = pool.map(_parfun, inds)
-        else:
-            for rn in range(rm,rx):
-                _parfun(rn)
     
 #allreg = ['N','S','NGC', 'SGC']
 #allreg = ['NGC','SGC']
@@ -1658,6 +1649,23 @@ if args.imsys_clus_fb_ran == 'y':
     else:
         for rn in inds:#range(rm,rx):
              _add2ran(rn)
+
+
+# if args.resamp == 'y':
+#             
+#     for reg in regions:
+#         flin = dirout + tracer_clus + '_'+reg    
+#         def _parfun(rannum):
+#             ct.clusran_resamp(flin,rannum,rcols=rcols)#,compmd=args.compmd)#, ntilecut=ntile, ccut=ccut)
+#         
+#         
+#         if args.par == 'y':
+#             from multiprocessing import Pool
+#             with Pool() as pool:
+#                 res = pool.map(_parfun, inds)
+#         else:
+#             for rn in range(rm,rx):
+#                 _parfun(rn)
 
 
 #if args.nz == 'y':
